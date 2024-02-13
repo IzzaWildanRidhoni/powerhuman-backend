@@ -5,6 +5,7 @@ namespace App\Http\Controllers\API;
 use App\Helpers\ResponseFormatter;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CreateCompanyRequest;
+use App\Http\Requests\UpdateCompanyRequest;
 use App\Models\Company;
 use App\Models\User;
 use Exception;
@@ -13,15 +14,19 @@ use Illuminate\Support\Facades\Auth;
 
 class CompanyController extends Controller
 {
-    public function all(Request $request)
+    public function fetch(Request $request)
     {
         $id = $request->input('id');
         $name = $request->input('name');
         $limit = $request->input('limit', 10);
 
+        $companyQuery = Company::with('users')->whereHas('users', function ($query) {
+            $query->where('user_id', Auth::id());
+        });
+
         // powerhuman.com/api/company?id=1
         if ($id) {
-            $company = Company::with(['users'])->find($id);
+            $company = $companyQuery->find($id);
 
             if ($company) {
                 return ResponseFormatter::success($company, 'Company found');
@@ -30,7 +35,7 @@ class CompanyController extends Controller
         }
 
         // powerhuman.com/api/company
-        $companies = Company::with(['users']);
+        $companies = $companyQuery;
 
         // powerhuman.com/api/company?name=kunde
         if ($name) {
@@ -70,6 +75,32 @@ class CompanyController extends Controller
             $company->load('users');
 
             return ResponseFormatter::success($company, 'Company Created');
+        } catch (Exception $e) {
+            return ResponseFormatter::error($e->getMessage(), 500);
+        }
+    }
+
+    public function update(UpdateCompanyRequest $request, $id)
+    {
+        try {
+            $company = Company::find($id);
+
+            if (!$company) {
+                throw new Exception('Company not found');
+            }
+
+            // upload logo
+            if ($request->hasFile('logo')) {
+                $path = $request->file('logo')->store('public/logos');
+            }
+
+            // update company
+            $company->update([
+                'name' => $request->name,
+                'logo' => $path
+            ]);
+
+            return ResponseFormatter::success($company, 'Company Updated');
         } catch (Exception $e) {
             return ResponseFormatter::error($e->getMessage(), 500);
         }
